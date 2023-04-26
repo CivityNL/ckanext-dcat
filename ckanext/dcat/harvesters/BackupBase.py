@@ -1,42 +1,17 @@
 import os
 import uuid
 import logging
-import copy
 
 import requests
 import rdflib
-import html2text
 
 from ckan import plugins as p
 from ckan import logic
 from ckan import model
-from ckan.lib.helpers import json
-from ckan.lib import helpers as h
-from ckan.logic import ValidationError, NotFound, get_action
-from ckan.logic.converters import convert_group_name_or_id_to_id
-from ckan.plugins import toolkit
+
 
 from ckanext.harvest.harvesters import HarvesterBase
 from ckanext.harvest.model import HarvestObject, HarvestObjectExtra
-
-
-log = logging.getLogger(__name__)
-CUSTOM_FIELDS = [
-'private',
-'searchable',
-'publisher_uri',
-'contact_email',
-'contact_name',
-'contact_uri',
-'frequency',
-'publisher_email',
-'spatial',
-'temporal',
-'theme',
-'version_notes',
-'license_id'
-]
-from ckanext.dcat.interfaces import IDCATRDFHarvester
 
 
 log = logging.getLogger(__name__)
@@ -51,8 +26,8 @@ class DCATHarvester(HarvesterBase):
 
     _user_name = None
 
-    def _get_content_and_type(self, url, harvest_job, page=1,
-                              content_type=None):
+
+    def _get_content_and_type(self, url, harvest_job, page=1, content_type=None):
         '''
         Gets the content and type of the given url.
 
@@ -71,8 +46,7 @@ class DCATHarvester(HarvesterBase):
                 content_type = content_type or rdflib.util.guess_format(url)
                 return content, content_type
             else:
-                self._save_gather_error('Could not get content for this url',
-                                        harvest_job)
+                self._save_gather_error('Could not get content for this url', harvest_job)
                 return None, None
 
         try:
@@ -80,18 +54,14 @@ class DCATHarvester(HarvesterBase):
                 url = url + '&' if '?' in url else url + '?'
                 url = url + 'page={0}'.format(page)
 
-            log.debug('Getting file %s', url)
 
-            # get the `requests` session object
-            session = requests.Session()
-            for harvester in p.PluginImplementations(IDCATRDFHarvester):
-                session = harvester.update_session(session)
+            log.debug('Getting file %s', url)
 
             # first we try a HEAD request which may not be supported
             did_get = False
-            r = session.head(url)
+            r = requests.head(url)
             if r.status_code == 405 or r.status_code == 400:
-                r = session.get(url, stream=True)
+                r = requests.get(url, stream=True)
                 did_get = True
             r.raise_for_status()
 
@@ -104,7 +74,7 @@ class DCATHarvester(HarvesterBase):
                 return None, None
 
             if not did_get:
-                r = session.get(url, stream=True)
+                r = requests.get(url, stream=True)
 
             length = 0
             content = ''
@@ -113,8 +83,7 @@ class DCATHarvester(HarvesterBase):
                 length += len(chunk)
 
                 if length >= self.MAX_FILE_SIZE:
-                    self._save_gather_error('Remote file is too big.',
-                                            harvest_job)
+                    self._save_gather_error('Remote file is too big.', harvest_job)
                     return None, None
 
             if content_type is None and r.headers.get('content-type'):
@@ -127,8 +96,8 @@ class DCATHarvester(HarvesterBase):
                 # We want to catch these ones later on
                 raise
 
-            msg = 'Could not get content from %s. Server responded with %s %s'\
-                % (url, error.response.status_code, error.response.reason)
+            msg = 'Could not get content from %s. Server responded with %s %s' % (
+                url, error.response.status_code, error.response.reason)
             self._save_gather_error(msg, harvest_job)
             return None, None
         except requests.exceptions.ConnectionError, error:
@@ -137,8 +106,7 @@ class DCATHarvester(HarvesterBase):
             self._save_gather_error(msg, harvest_job)
             return None, None
         except requests.exceptions.Timeout, error:
-            msg = 'Could not get content from %s because the connection timed'\
-                ' out.' % url
+            msg = 'Could not get content from %s because the connection timed out.' % url
             self._save_gather_error(msg, harvest_job)
             return None, None
 
@@ -169,23 +137,19 @@ class DCATHarvester(HarvesterBase):
         if package is None or package.title != title:
             name = self._gen_new_name(title)
             if not name:
-                raise Exception(
-                    'Could not generate a unique name from the title or the '
-                    'GUID. Please choose a more unique title.')
+                raise Exception('Could not generate a unique name from the title or the GUID. Please choose a more unique title.')
         else:
             name = package.name
 
         return name
 
     def get_original_url(self, harvest_object_id):
-        obj = model.Session.query(HarvestObject). \
-            filter(HarvestObject.id == harvest_object_id).\
-            first()
+        obj = model.Session.query(HarvestObject).\
+                                    filter(HarvestObject.id==harvest_object_id).\
+                                    first()
         if obj:
             return obj.source.url
         return None
-
-
 
     ## Start hooks
 
@@ -196,67 +160,13 @@ class DCATHarvester(HarvesterBase):
         '''
         return package_dict
 
-    # End hooks
-
-    def _set_config(self, config_str):
-        if config_str:
-            self.config = json.loads(config_str)
-            if 'api_version' in self.config:
-                self.api_version = int(self.config['api_version'])
-        else:
-            self.config = {}
-
-    def validate_config(self, config):
-        if not config:
-            return config
-
-        try:
-            config_obj = json.loads(config)
-
-            if 'api_version' in config_obj:
-                try:
-                    int(config_obj['api_version'])
-                except ValueError:
-                    raise ValueError('api_version must be an integer')
-
-            if 'default_tags' in config_obj:
-                if not isinstance(config_obj['default_tags'], list):
-                    raise ValueError('default_tags must be a list')
-
-            if 'default_groups' in config_obj:
-                if not isinstance(config_obj['default_groups'], list):
-                    raise ValueError('default_groups must be a list')
-
-                # Check if default groups exist
-                context = {'model': model, 'user': toolkit.c.user}
-                for group_name in config_obj['default_groups']:
-                    try:
-                        group = get_action('group_show')(
-                            context, {'id': group_name})
-                    except NotFound, e:
-                        raise ValueError('Default group not found')
-
-            if 'default_extras' in config_obj:
-                if not isinstance(config_obj['default_extras'], dict):
-                    raise ValueError('default_extras must be a dictionary')
-
-        except ValueError, e:
-            raise e
-
-        return config
-
+    ## End hooks
 
     def gather_stage(self,harvest_job):
         log.debug('In DCATHarvester gather_stage')
 
 
         ids = []
-
-        # gil
-        print harvest_job
-        self._set_config(harvest_job.source.config)
-        log.debug('Using config: %r', self.config)
-        # gil
 
         # Get the previous guids for this source
         query = model.Session.query(HarvestObject.guid, HarvestObject.package_id).\
@@ -408,107 +318,6 @@ class DCATHarvester(HarvesterBase):
         if not package_dict.get('name'):
             package_dict['name'] = self._get_package_name(harvest_object, package_dict['title'])
 
-
-        # gil
-
-        self._set_config(harvest_object.job.source.config)
-
-        try:
-            # We need to explicitly provide a package ID
-            package_dict['id'] = unicode(uuid.uuid4())
-
-            if package_dict.get('type') == 'harvest':
-                log.warn('Remote dataset is a harvest source, ignoring...')
-                return True
-
-            # Set default tags if needed
-            default_tags = self.config.get('default_tags', [])
-            if default_tags:
-                if not 'tags' in package_dict:
-                    package_dict['tags'] = []
-
-                package_dict['tags'].extend(
-                    [t for t in default_tags if t not in package_dict['tags']])
-
-            # Set default extras if needed
-            default_extras = self.config.get('default_extras', {})
-
-            def get_extra(key, package_dict):
-                for extra in package_dict.get('extras', []):
-                    if extra['key'] == key:
-                        return extra
-
-            if default_extras:
-                override_extras = self.config.get('override_extras', False)
-
-                if not 'extras' in package_dict:
-                    package_dict['extras'] = {}
-                for key, value in default_extras.iteritems():
-                    existing_extra = get_extra(key, package_dict)
-                    if existing_extra and not override_extras:
-                        continue  # no need for the default
-                    if existing_extra:
-                        package_dict['extras'].remove(existing_extra)
-                    # Look for replacement strings
-                    if isinstance(value, basestring):
-                        value = value.format(
-                            harvest_source_id=harvest_object.job.source.id,
-                            harvest_source_url=harvest_object.job.source.url.strip('/'),
-                            harvest_source_title=harvest_object.job.source.title,
-                            harvest_job_id=harvest_object.job.id,
-                            harvest_object_id=harvest_object.id,
-                            dataset_id=package_dict['id']
-                        )
-                    package_dict['extras'].append({'key': key, 'value': value})
-
-            # Set Group/Thema (if possible)
-            extra_theme = next((item for item in package_dict['extras'] if item["key"] == "theme"), False)
-            # Check if thema field is set
-            if extra_theme:
-                for g in h.groups_available():
-                    if (extra_theme['value'] == g['name'] or extra_theme['value'].lower() == g['display_name'].lower()):
-                        if not 'groups' in package_dict:
-                            package_dict['groups'] = []
-                        package_dict['groups'] = [{"name": extra_theme['value']}]
-            else:
-                # Check if any of the Tags corresponds to a existing group
-                if 'tags' in package_dict:
-                    for t in package_dict['tags']:
-                        for g in h.groups_available():
-                            if (t['name'] == g['name'] or t['name'].lower() == g['display_name'].lower()):
-                                if not 'groups' in package_dict:
-                                    package_dict['groups'] = []
-                                package_dict['groups'] = [{"name": g['name']}]
-                if 'groups' in package_dict:
-                    package_dict['extras'].append({'key': 'theme', 'value': package_dict['groups'][0]['name']})
-
-                    # Descrption: Renders HTML to plain text (Markdown compatible)
-            if 'notes' in package_dict:
-                package_dict['notes'] = html2text.html2text(package_dict['notes'])
-
-            for resource in package_dict.get('resources', []):
-                # Clear remote url_type for resources (eg datastore, upload) as
-                # we are only creating normal resources with links to the
-                # remote ones
-                resource.pop('url_type', None)
-                # Clear revision_id as the revision won't exist on this CKAN
-                # and saving it will cause an IntegrityError with the foreign
-                # key.
-                resource.pop('revision_id', None)
-                # result = self._create_or_update_package(
-                #     package_dict, harvest_object, package_dict_form='package_show')
-
-                # return result
-        except ValidationError, e:
-            self._save_object_error('Invalid package with GUID %s: %r' %
-                                    (harvest_object.guid, e.error_dict),
-                                    harvest_object, 'Import')
-        except Exception, e:
-            self._save_object_error('%s' % e, harvest_object, 'Import')
-
-        # gil
-
-
         # Allow custom harvesters to modify the package dict before creating
         # or updating the package
         package_dict = self.modify_package_dict(package_dict,
@@ -551,59 +360,14 @@ class DCATHarvester(HarvesterBase):
             model.Session.execute('SET CONSTRAINTS harvest_object_package_id_fkey DEFERRED')
             model.Session.flush()
 
-            # gil
-            # Check Extras Against the default Schema
-            override_extras = self.config.get('override_extras', False)
-
-            iterable_extras = list(package_dict['extras'])
-            for extra in iterable_extras:
-                if extra['key'] in package_schema:
-                    # take it out of extras and add it to package_dict as a normal field
-                    package_dict[extra['key']] = extra['value']
-                    package_dict['extras'].remove(extra)
-
-            log.debug('package_dict = {0}'.format(package_dict))
-            # gil
-
             package_id = p.toolkit.get_action('package_create')(context, package_dict)
             log.info('Created dataset with id %s', package_id)
         elif status == 'change':
 
             package_dict['id'] = harvest_object.package_id
-            # gil
-
-            # Check Extras Against Schema from the object retrieved
-            existing_package = p.toolkit.get_action('package_show')(context, {'id': harvest_object.package_id})
-            override_extras = self.config.get('override_extras', False)
-
-            iterable_extras = list(package_dict['extras'])
-            for extra in iterable_extras:
-                if extra['key'] in existing_package:
-                    if override_extras:
-                        package_dict[extra['key']] = extra['value']
-                        package_dict['extras'].remove(extra)
-                        continue
-                    else:
-                        package_dict[extra['key']] = existing_package[extra['key']]
-                        package_dict['extras'].remove(extra)
-                        continue
-                elif extra['key'] in existing_package['extras']:
-                    if override_extras:
-                        log.debug('Guia 6')
-                        package_dict['extras'][extra['key']] = extra['value']
-                        continue
-                elif extra['key'] in CUSTOM_FIELDS:
-                    # take it out of extras and add it to package_dict as a normal field
-                    package_dict[extra['key']] = extra['value']
-                    package_dict['extras'].remove(extra)
-
-            # log.debug('package_dict = {0}'.format(package_dict))
-
-            # gil
             package_id = p.toolkit.get_action('package_update')(context, package_dict)
             log.info('Updated dataset with id %s', package_id)
 
         model.Session.commit()
 
         return True
-

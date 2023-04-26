@@ -1,22 +1,21 @@
-from builtins import str
-from past.builtins import basestring
 import json
 import uuid
 import logging
 import hashlib
 import traceback
 
-import six
-
 import ckan.plugins as p
 import ckan.model as model
+import ckan.logic as logic
 
 import ckan.lib.plugins as lib_plugins
 
 from ckanext.harvest.model import HarvestObject, HarvestObjectExtra
-from ckanext.harvest.logic.schema import unicode_safe
+
 from ckanext.dcat.harvesters.base import DCATHarvester
+
 from ckanext.dcat.processors import RDFParserException, RDFParser
+
 from ckanext.dcat.interfaces import IDCATRDFHarvester
 
 
@@ -31,28 +30,6 @@ class DCATRDFHarvester(DCATHarvester):
             'title': 'Generic DCAT RDF Harvester',
             'description': 'Harvester for DCAT datasets from an RDF graph'
         }
-
-    _names_taken = []
-
-    def _get_dict_value(self, _dict, key, default=None):
-        '''
-        Returns the value for the given key on a CKAN dict
-
-        By default a key on the root level is checked. If not found, extras
-        are checked, both with the key provided and with `dcat_` prepended to
-        support legacy fields.
-
-        If not found, returns the default value, which defaults to None
-        '''
-
-        if key in _dict:
-            return _dict[key]
-
-        for extra in _dict.get('extras', []):
-            if extra['key'] == key or extra['key'] == 'dcat_' + key:
-                return extra['value']
-
-        return default
 
     def _get_guid(self, dataset_dict, source_url=None):
         '''
@@ -70,19 +47,45 @@ class DCATRDFHarvester(DCATHarvester):
          Returns None if no guid could be decided.
         '''
         guid = None
+        for extra in dataset_dict.get('extras', []):
+            if extra['key'] == 'uri' and extra['value']:
+                return extra['value']
 
-        guid = (
-            self._get_dict_value(dataset_dict, 'uri') or
-            self._get_dict_value(dataset_dict, 'identifier')
-        )
-        if guid:
-            return guid
+        for extra in dataset_dict.get('extras', []):
+            if extra['key'] == 'identifier' and extra['value']:
+                return extra['value']
+
+        for extra in dataset_dict.get('extras', []):
+            if extra['key'] == 'dcat_identifier' and extra['value']:
+                return extra['value']
 
         if dataset_dict.get('name'):
             guid = dataset_dict['name']
             if source_url:
                 guid = source_url.rstrip('/') + '/' + guid
+
         return guid
+
+    def _get_existing_dataset(self, guid):
+        '''
+        Checks if a dataset with a certain guid extra already exists
+
+        Returns a dict as the ones returned by package_show
+        '''
+
+        datasets = model.Session.query(model.Package.id) \
+                                .join(model.PackageExtra) \
+                                .filter(model.PackageExtra.key=='guid') \
+                                .filter(model.PackageExtra.value==guid) \
+                                .filter(model.Package.state=='active') \
+                                .all()
+
+        if not datasets:
+            return None
+        elif len(datasets) > 1:
+            log.error('Found more than one dataset with the same guid: {0}'.format(guid))
+
+        return p.toolkit.get_action('package_show')({}, {'id': datasets[0][0]})
 
     def _mark_datasets_for_deletion(self, guids_in_source, harvest_job):
         '''
@@ -109,7 +112,7 @@ class DCATRDFHarvester(DCATHarvester):
         for guid, package_id in query:
             guid_to_package_id[guid] = package_id
 
-        guids_in_db = list(guid_to_package_id.keys())
+        guids_in_db = guid_to_package_id.keys()
 
         # Get objects/datasets to delete (ie in the DB but not in the source)
         guids_to_delete = set(guids_in_db) - set(guids_in_source)
@@ -159,7 +162,6 @@ class DCATRDFHarvester(DCATHarvester):
         guids_in_source = []
         object_ids = []
         last_content_hash = None
-        self._names_taken = []
 
         while next_page_url:
             for harvester in p.PluginImplementations(IDCATRDFHarvester):
@@ -175,10 +177,7 @@ class DCATRDFHarvester(DCATHarvester):
 
             content_hash = hashlib.md5()
             if content:
-                if six.PY2:
-                    content_hash.update(content)
-                else:
-                    content_hash.update(content.encode('utf8'))
+                content_hash.update(content)
 
             if last_content_hash:
                 if content_hash.digest() == last_content_hash.digest():
@@ -202,39 +201,24 @@ class DCATRDFHarvester(DCATHarvester):
 
             try:
                 parser.parse(content, _format=rdf_format)
-            except RDFParserException as e:
+            except RDFParserException, e:
                 self._save_gather_error('Error parsing the RDF file: {0}'.format(e), harvest_job)
                 return []
 
-            for harvester in p.PluginImplementations(IDCATRDFHarvester):
-                parser, after_parsing_errors = harvester.after_parsing(parser, harvest_job)
-
-                for error_msg in after_parsing_errors:
-                    self._save_gather_error(error_msg, harvest_job)
-
-            if not parser:
-                return []
-
             try:
-
-                source_dataset = model.Package.get(harvest_job.source.id)
-
                 for dataset in parser.datasets():
                     if not dataset.get('name'):
                         dataset['name'] = self._gen_new_name(dataset['title'])
-                    if dataset['name'] in self._names_taken:
-                        suffix = len([i for i in self._names_taken if i.startswith(dataset['name'] + '-')]) + 1
-                        dataset['name'] = '{}-{}'.format(dataset['name'], suffix)
-                    self._names_taken.append(dataset['name'])
 
                     # Unless already set by the parser, get the owner organization (if any)
                     # from the harvest source dataset
                     if not dataset.get('owner_org'):
+                        source_dataset = model.Package.get(harvest_job.source.id)
                         if source_dataset.owner_org:
                             dataset['owner_org'] = source_dataset.owner_org
 
                     # Try to get a unique identifier for the harvested dataset
-                    guid = self._get_guid(dataset, source_url=source_dataset.url)
+                    guid = self._get_guid(dataset)
 
                     if not guid:
                         self._save_gather_error('Could not get a unique identifier for dataset: {0}'.format(dataset),
@@ -249,7 +233,7 @@ class DCATRDFHarvester(DCATHarvester):
 
                     obj.save()
                     object_ids.append(obj.id)
-            except Exception as e:
+            except Exception, e:
                 self._save_gather_error('Error when processsing dataset: %r / %s' % (e, traceback.format_exc()),
                                         harvest_job)
                 return []
@@ -322,13 +306,7 @@ class DCATRDFHarvester(DCATHarvester):
         existing_dataset = self._get_existing_dataset(harvest_object.guid)
 
         try:
-            package_plugin = lib_plugins.lookup_package_plugin(dataset.get('type', None))
             if existing_dataset:
-                package_schema = package_plugin.update_package_schema()
-                for harvester in p.PluginImplementations(IDCATRDFHarvester):
-                    package_schema = harvester.update_package_schema_for_update(package_schema)
-                context['schema'] = package_schema
-
                 # Don't change the dataset name even if the title has
                 dataset['name'] = existing_dataset['name']
                 dataset['id'] = existing_dataset['id']
@@ -351,12 +329,13 @@ class DCATRDFHarvester(DCATHarvester):
                         # Save reference to the package on the object
                         harvest_object.package_id = dataset['id']
                         harvest_object.add()
+                        self.validate_mandatory(dataset)
 
                         p.toolkit.get_action('package_update')(context, dataset)
                     else:
                         log.info('Ignoring dataset %s' % existing_dataset['name'])
                         return 'unchanged'
-                except p.toolkit.ValidationError as e:
+                except p.toolkit.ValidationError, e:
                     self._save_object_error('Update validation Error: %s' % str(e.error_summary), harvest_object, 'Import')
                     return False
 
@@ -370,14 +349,14 @@ class DCATRDFHarvester(DCATHarvester):
                 log.info('Updated dataset %s' % dataset['name'])
 
             else:
+                package_plugin = lib_plugins.lookup_package_plugin(dataset.get('type', None))
+
                 package_schema = package_plugin.create_package_schema()
-                for harvester in p.PluginImplementations(IDCATRDFHarvester):
-                    package_schema = harvester.update_package_schema_for_create(package_schema)
                 context['schema'] = package_schema
 
                 # We need to explicitly provide a package ID
-                dataset['id'] = str(uuid.uuid4())
-                package_schema['id'] = [unicode_safe]
+                dataset['id'] = unicode(uuid.uuid4())
+                package_schema['id'] = [unicode]
 
                 harvester_tmp_dict = {}
 
@@ -397,11 +376,12 @@ class DCATRDFHarvester(DCATHarvester):
                         model.Session.execute('SET CONSTRAINTS harvest_object_package_id_fkey DEFERRED')
                         model.Session.flush()
 
+                        self.validate_mandatory(dataset)
                         p.toolkit.get_action('package_create')(context, dataset)
                     else:
                         log.info('Ignoring dataset %s' % name)
                         return 'unchanged'
-                except p.toolkit.ValidationError as e:
+                except p.toolkit.ValidationError, e:
                     self._save_object_error('Create validation Error: %s' % str(e.error_summary), harvest_object, 'Import')
                     return False
 
@@ -414,7 +394,7 @@ class DCATRDFHarvester(DCATHarvester):
 
                 log.info('Created dataset %s' % dataset['name'])
 
-        except Exception as e:
+        except Exception, e:
             self._save_object_error('Error importing dataset %s: %r / %s' % (dataset.get('name', ''), e, traceback.format_exc()), harvest_object, 'Import')
             return False
 
@@ -422,3 +402,27 @@ class DCATRDFHarvester(DCATHarvester):
             model.Session.commit()
 
         return True
+
+    # function to validate mandatory fields based on scheming (see .json file selected on production.ini assigned on scheming.dataset_schemas)
+    def validate_mandatory(self,dataset):
+        # List of attributes that should be promoted outside extras fields
+        remap_fields = ['issued', 'frequency', 'access_rights', 'language', 'theme', 'contact_name', 'temporal_start', 'temporal_end','license_id','open_data']
+        # create new dict of promoted properties
+        extras_to_promote = [d for d in dataset['extras'] if d['key'] in remap_fields]
+        # rebuild dict of updates extras
+        dataset['extras'] = [d for d in dataset['extras'] if d['key'] not in remap_fields]
+        # filtering on promoted properties
+        for field in extras_to_promote:
+            if field['key'] == 'theme' or field['key'] == 'language' :
+                dataset[field['key']] = field['value'].replace('"','').replace(']','').replace('[','').replace('\\','')
+            else:
+                dataset[field['key']] = field['value']
+        # double filtering on theme and language (when totally absent from schema)
+        if 'theme' not in dataset:
+            dataset['theme'] = 'http://publications.europa.eu/resource/authority/data-theme/OP_DATPRO'
+        if 'language' not in dataset:
+            try:
+                dataset['language'] = dict['resources'][0]['language'].replace('"','').replace(']','').replace('[','').replace('\\','')
+            except:
+                dataset['language'] = 'http://publications.europa.eu/resource/authority/language/ENG'
+        return dataset

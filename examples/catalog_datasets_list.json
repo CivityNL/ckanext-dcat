@@ -5,6 +5,7 @@
         "identifier": "https://data.some.org/catalog/datasets/1", 
         "issued": "2013-04-26T00:00:00Z", 
         "modified": "2013-04-26T00:00:00Z", 
+        "searchable": true,
         "landingPage": "", 
         "publisher": {
             "name": "Publishing Organization for dataset 1",
@@ -50,7 +51,7 @@
             "pollution"
         ], 
         "language": [
-            "en"
+            "http://publications.europa.eu/resource/authority/language/ENG"
         ]
     }, 
     {
@@ -59,6 +60,7 @@
         "description": "A longer description of dataset 2: with two distributions, a website and a PDF file. Some special characters: \u0141\u00f3d\u017a", 
         "identifier": "https://data.some.org/catalog/datasets/2", 
         "issued": "2012-06-21", 
+        "searchable": true,
         "modified": "2013-04-01", 
         "landingPage": "", 
         "publisher": {
@@ -95,7 +97,7 @@
             "sloths"
         ], 
         "language": [
-            "en"
+            "http://publications.europa.eu/resource/authority/language/SWE"
         ]
     }
 ] 

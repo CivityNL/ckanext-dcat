@@ -1,17 +1,13 @@
-from builtins import str
 import json
 import logging
 from hashlib import sha1
-import traceback
 import uuid
-
-import requests
 
 from ckan import model
 from ckan import logic
 from ckan import plugins as p
 from ckanext.harvest.model import HarvestObject, HarvestObjectExtra
-from ckanext.harvest.logic.schema import unicode_safe
+
 from ckanext.dcat import converters
 from ckanext.dcat.harvesters.base import DCATHarvester
 
@@ -77,7 +73,7 @@ class DCATJSONHarvester(DCATHarvester):
         for guid, package_id in query:
             guid_to_package_id[guid] = package_id
 
-        guids_in_db = list(guid_to_package_id.keys())
+        guids_in_db = guid_to_package_id.keys()
         guids_in_source = []
 
         # Get file contents
@@ -90,7 +86,7 @@ class DCATJSONHarvester(DCATHarvester):
             try:
                 content, content_type = \
                     self._get_content_and_type(url, harvest_job, page)
-            except requests.exceptions.HTTPError as error:
+            except requests.exceptions.HTTPError, error:
                 if error.response.status_code == 404:
                     if page > 1:
                         # Server returned a 404 after the first page, no more
@@ -147,7 +143,7 @@ class DCATJSONHarvester(DCATHarvester):
                     # Empty document, no more ids
                     break
 
-            except ValueError as e:
+            except ValueError, e:
                 msg = 'Error parsing file: {0}'.format(str(e))
                 self._save_gather_error(msg, harvest_job)
                 return None
@@ -227,13 +223,6 @@ class DCATJSONHarvester(DCATHarvester):
             package_dict['name'] = \
                 self._get_package_name(harvest_object, package_dict['title'])
 
-        # copy across resource ids from the existing dataset, otherwise they'll
-        # be recreated with new ids
-        if status == 'change':
-            existing_dataset = self._get_existing_dataset(harvest_object.guid)
-            if existing_dataset:
-                copy_across_resource_ids(existing_dataset, package_dict)
-
         # Allow custom harvesters to modify the package dict before creating
         # or updating the package
         package_dict = self.modify_package_dict(package_dict,
@@ -256,93 +245,37 @@ class DCATJSONHarvester(DCATHarvester):
             'ignore_auth': True,
         }
 
-        try:
-            if status == 'new':
-                package_schema = logic.schema.default_create_package_schema()
-                context['schema'] = package_schema
+        if status == 'new':
 
-                # We need to explicitly provide a package ID
-                package_dict['id'] = str(uuid.uuid4())
-                package_schema['id'] = [unicode_safe]
+            package_schema = logic.schema.default_create_package_schema()
+            context['schema'] = package_schema
 
-                # Save reference to the package on the object
-                harvest_object.package_id = package_dict['id']
-                harvest_object.add()
+            # We need to explicitly provide a package ID
+            package_dict['id'] = unicode(uuid.uuid4())
+            package_schema['id'] = [unicode]
 
-                # Defer constraints and flush so the dataset can be indexed with
-                # the harvest object id (on the after_show hook from the harvester
-                # plugin)
-                model.Session.execute(
-                    'SET CONSTRAINTS harvest_object_package_id_fkey DEFERRED')
-                model.Session.flush()
+            # Save reference to the package on the object
+            harvest_object.package_id = package_dict['id']
+            harvest_object.add()
 
-            elif status == 'change':
-                package_dict['id'] = harvest_object.package_id
+            # Defer constraints and flush so the dataset can be indexed with
+            # the harvest object id (on the after_show hook from the harvester
+            # plugin)
+            model.Session.execute(
+                'SET CONSTRAINTS harvest_object_package_id_fkey DEFERRED')
+            model.Session.flush()
 
-            if status in ['new', 'change']:
-                action = 'package_create' if status == 'new' else 'package_update'
-                message_status = 'Created' if status == 'new' else 'Updated'
+            log.info('package_dict = {0}'.format(package_dict))
+            package_id = \
+                p.toolkit.get_action('package_create')(context, package_dict)
+            log.info('Created dataset with id %s', package_id)
 
-                package_id = p.toolkit.get_action(action)(context, package_dict)
-                log.info('%s dataset with id %s', message_status, package_id)
+        elif status == 'change':
+            package_dict['id'] = harvest_object.package_id
+            package_id = \
+                p.toolkit.get_action('package_update')(context, package_dict)
+            log.info('Updated dataset with id %s', package_id)
 
-        except Exception as e:
-            dataset = json.loads(harvest_object.content)
-            dataset_name = dataset.get('name', '')
-
-            self._save_object_error('Error importing dataset %s: %r / %s' % (dataset_name, e, traceback.format_exc()), harvest_object, 'Import')
-            return False
-
-        finally:
-            model.Session.commit()
+        model.Session.commit()
 
         return True
-
-def copy_across_resource_ids(existing_dataset, harvested_dataset):
-    '''Compare the resources in a dataset existing in the CKAN database with
-    the resources in a freshly harvested copy, and for any resources that are
-    the same, copy the resource ID into the harvested_dataset dict.
-    '''
-    # take a copy of the existing_resources so we can remove them when they are
-    # matched - we don't want to match them more than once.
-    existing_resources_still_to_match = \
-        [r for r in existing_dataset.get('resources')]
-
-    # we match resources a number of ways. we'll compute an 'identity' of a
-    # resource in both datasets and see if they match.
-    # start with the surest way of identifying a resource, before reverting
-    # to closest matches.
-    resource_identity_functions = [
-        lambda r: r['uri'],  # URI is best
-        lambda r: (r['url'], r['title'], r['format']),
-        lambda r: (r['url'], r['title']),
-        lambda r: r['url'],  # same URL is fine if nothing else matches
-    ]
-
-    for resource_identity_function in resource_identity_functions:
-        # calculate the identities of the existing_resources
-        existing_resource_identities = {}
-        for r in existing_resources_still_to_match:
-            try:
-                identity = resource_identity_function(r)
-                existing_resource_identities[identity] = r
-            except KeyError:
-                pass
-
-        # calculate the identities of the harvested_resources
-        for resource in harvested_dataset.get('resources'):
-            try:
-                identity = resource_identity_function(resource)
-            except KeyError:
-                identity = None
-            if identity and identity in existing_resource_identities:
-                # we got a match with the existing_resources - copy the id
-                matching_existing_resource = \
-                    existing_resource_identities[identity]
-                resource['id'] = matching_existing_resource['id']
-                # make sure we don't match this existing_resource again
-                del existing_resource_identities[identity]
-                existing_resources_still_to_match.remove(
-                    matching_existing_resource)
-        if not existing_resources_still_to_match:
-            break

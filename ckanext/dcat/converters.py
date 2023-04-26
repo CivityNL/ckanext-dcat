@@ -1,4 +1,3 @@
-from past.builtins import basestring
 import logging
 
 log = logging.getLogger(__name__)
@@ -11,7 +10,12 @@ def dcat_to_ckan(dcat_dict):
     package_dict['title'] = dcat_dict.get('title')
     package_dict['notes'] = dcat_dict.get('description')
     package_dict['url'] = dcat_dict.get('landingPage')
-
+    package_dict['license_id'] = 'cc-0'
+    package_dict['maintainer'] = 'http://standaarden.overheid.nl/owms/terms/Dataplatform'
+    package_dict['contact_name'] = 'Dataplatform'
+    package_dict['theme'] = 'http://publications.europa.eu/resource/authority/data-theme/OP_DATPRO'
+    package_dict['searchable'] = 'True'
+    package_dict['language'] = dcat_dict.get('language','http://publications.europa.eu/resource/authority/language/ENG')
 
     package_dict['tags'] = []
     for keyword in dcat_dict.get('keyword', []):
@@ -30,10 +34,12 @@ def dcat_to_ckan(dcat_dict):
         package_dict['extras'].append({'key': 'dcat_publisher_name', 'value': dcat_publisher.get('name')})
         package_dict['extras'].append({'key': 'dcat_publisher_email', 'value': dcat_publisher.get('mbox')})
 
-    package_dict['extras'].append({
-        'key': 'language',
-        'value': ','.join(dcat_dict.get('language', []))
-    })
+    # TEMPORARY DISABLE LANGUAGE KEY AS NON MANDATORY
+    # if dcat_dict.get('language', None):
+    #     package_dict['extras'].append({
+    #         'key': 'language',
+    #         'value': ','.join(dcat_dict.get('language', []))
+    #     })
 
     package_dict['resources'] = []
     for distribution in dcat_dict.get('distribution', []):
@@ -42,6 +48,7 @@ def dcat_to_ckan(dcat_dict):
             'description': distribution.get('description'),
             'url': distribution.get('downloadURL') or distribution.get('accessURL'),
             'format': distribution.get('format'),
+            'license_id': 'cc-0'
         }
 
         if distribution.get('byteSize'):
@@ -55,7 +62,6 @@ def dcat_to_ckan(dcat_dict):
 
 
 def ckan_to_dcat(package_dict):
-
     dcat_dict = {}
 
     dcat_dict['title'] = package_dict.get('title')

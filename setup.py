@@ -1,6 +1,6 @@
 from setuptools import setup, find_packages
 
-version = '1.4.0'
+version = '0.0.7'
 
 setup(
     name='ckanext-dcat',
@@ -42,7 +42,6 @@ setup(
 
     [ckan.rdf.profiles]
     euro_dcat_ap=ckanext.dcat.profiles:EuropeanDCATAPProfile
-    euro_dcat_ap_2=ckanext.dcat.profiles:EuropeanDCATAP2Profile
     schemaorg=ckanext.dcat.profiles:SchemaOrgProfile
 
     [paste.paster_command]

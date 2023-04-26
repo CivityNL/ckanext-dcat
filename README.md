@@ -1,16 +1,12 @@
 # ckanext-dcat
 
-
-[![Tests](https://github.com/ckan/ckanext-dcat/workflows/Tests/badge.svg?branch=master)](https://github.com/ckan/ckanext-dcat/actions)
+[![Build Status](https://travis-ci.org/ckan/ckanext-dcat.svg?branch=master)](https://travis-ci.org/ckan/ckanext-dcat)
 [![Code Coverage](http://codecov.io/github/ckan/ckanext-dcat/coverage.svg?branch=master)](http://codecov.io/github/ckan/ckanext-dcat?branch=master)
 
 
 This extension provides plugins that allow CKAN to expose and consume metadata from other catalogs using RDF documents serialized using DCAT. The Data Catalog Vocabulary (DCAT) is "an RDF vocabulary designed to facilitate interoperability between data catalogs published on the Web". More information can be found on the following W3C page:
 
 [http://www.w3.org/TR/vocab-dcat](http://www.w3.org/TR/vocab-dcat)
-
-It also offers other features related to Semantic Data like exposing the necessary markup to get your datasets indexed in [Google Dataset Search](https://toolbox.google.com/datasetsearch).
-
 
 ## Contents
 
@@ -22,7 +18,6 @@ It also offers other features related to Semantic Data like exposing the necessa
     - [URIs](#uris)
     - [Content negotiation](#content-negotiation)
 - [RDF DCAT harvester](#rdf-dcat-harvester)
-    - [Maximum file size](#maximum-file-size)
     - [Transitive harvesting](#transitive-harvesting)
     - [Extending the RDF harvester](#extending-the-rdf-harvester)
 - [JSON DCAT harvester](#json-dcat-harvester)
@@ -35,15 +30,14 @@ It also offers other features related to Semantic Data like exposing the necessa
     - [Compatibility mode](#compatibility-mode)
 - [XML DCAT harvester (deprecated)](#xml-dcat-harvester-deprecated)
 - [Translation of fields](#translation-of-fields)
-- [Structured Data and Google Dataset Search indexing](#structured-data-and-google-dataset-search-indexing)
+- [Structured Data](#structured-data)
 - [Running the Tests](#running-the-tests)
-- [Releases](#releases)
 - [Acknowledgements](#acknowledgements)
 - [Copying and License](#copying-and-license)
 
 ## Overview
 
-With the emergence of Open Data initiatives around the world, the need to share metadata across different catalogs has became more evident. Sites like [the EU Open Data Portal](https://data.europa.eu/euodp/en/data/) aggregate datasets from different portals, and there has been a growing demand to provide a clear and standard interface to allow incorporating metadata into them automatically.
+With the emergence of Open Data initiatives around the world, the need to share metadata across different catalogs has became more evident. Sites like [http://publicdata.eu](http://publicdata.eu) aggregate datasets from different portals, and there has been a growing demand to provide a clear and standard interface to allow incorporating metadata into them automatically.
 
 There is growing consensus around [DCAT](http://www.w3.org/TR/vocab-dcat) being the right way forward, but actual implementations are needed. This extension aims to provide tools and guidance to allow publishers to publish and share DCAT based metadata easily.
 
@@ -53,12 +47,12 @@ In terms of CKAN features, this extension offers:
 
 * An [RDF Harvester](#rdf-dcat-harvester) that allows importing RDF serializations from other catalogs to create CKAN datasets (`dcat_rdf_harvester` plugin).
 
-* An [JSON DCAT Harvester](#json-dcat-harvester) that allows importing JSON objects that are based on DCAT terms but are not defined as JSON-LD, using the serialization described in the [spec.dataportals.org](http://spec.dataportals.org/#datasets-serialization-format) site (`dcat_json_harvester` plugin)..
+* An [JSON DCAT Harvester](#json-dcat-harvester) that allows importing JSON objects that are based on DCAT terms but are not defined as JSON-LD, using the serialization described in the [spec.datacatalogs.org](http://spec.datacatalogs.org/#datasets_serialization_format) site (`dcat_json_harvester` plugin)..
 
 
 These are implemented internally using:
 
-* A base [mapping](#rdf-dcat-to-ckan-dataset-mapping) between DCAT and CKAN datasets and viceversa (compatible with [DCAT-AP v1.1](https://joinup.ec.europa.eu/asset/dcat_application_profile/asset_release/dcat-ap-v11) and [DCAT-AP v2.1](https://joinup.ec.europa.eu/collection/semantic-interoperability-community-semic/solution/dcat-application-profile-data-portals-europe/release/210)).
+* A base [mapping](#rdf-dcat-to-ckan-dataset-mapping) between DCAT and CKAN datasets and viceversa (compatible with [DCAT-AP v1.1](https://joinup.ec.europa.eu/asset/dcat_application_profile/asset_release/dcat-ap-v11)).
 
 * An [RDF Parser](#rdf-dcat-parser) that allows to read RDF serializations in different formats and extract CKAN dataset dicts, using customizable [profiles](#profiles).
 
@@ -77,10 +71,6 @@ These are implemented internally using:
 3.  Install the extension requirements:
 
         (pyenv) $ pip install -r ckanext-dcat/requirements.txt
-
-    > **Note**
-    >
-    > If you are running on Python 2.7 or 3.6 please use `requirements-py2-py36.txt` instead
 
 4.  Enable the required plugins in your ini file:
 
@@ -112,13 +102,12 @@ The extension will determine the RDF serialization format returned. The currentl
 
 The fallback `rdf` format defaults to RDF/XML.
 
-Here's an example of the different formats:
+Here's an example of the different formats available (links might not be live as they link to a demo site):
 
-* https://opendata.swiss/en/dataset/verbreitung-der-steinbockkolonien.rdf
-* https://opendata.swiss/en/dataset/verbreitung-der-steinbockkolonien.xml
-* https://opendata.swiss/en/dataset/verbreitung-der-steinbockkolonien.ttl
-* https://opendata.swiss/en/dataset/verbreitung-der-steinbockkolonien.n3
-* https://opendata.swiss/en/dataset/verbreitung-der-steinbockkolonien.jsonld
+* http://demo.ckan.org/dataset/newcastle-city-council-payments-over-500.rdf
+* http://demo.ckan.org/dataset/newcastle-city-council-payments-over-500.xml
+* http://demo.ckan.org/dataset/newcastle-city-council-payments-over-500.ttl
+* http://demo.ckan.org/dataset/newcastle-city-council-payments-over-500.n3
 
 RDF representations will be advertised using `<link rel="alternate">` tags on the `<head>` sectionon the dataset page source code, eg:
 
@@ -136,8 +125,8 @@ Check the [RDF DCAT Serializer](#rdf-dcat-serializer) section for more details a
 
 You can specify the profile by using the `profiles=<profile1>,<profile2>` query parameter on the dataset endpoint (as a comma-separated list):
 
-* https://opendata.swiss/en/dataset/verbreitung-der-steinbockkolonien.xml?profiles=euro_dcat_ap
-* https://opendata.swiss/en/dataset/verbreitung-der-steinbockkolonien.jsonld?profiles=schemaorg
+* `http://demo.ckan.org/dataset/newcastle-city-council-payments-over-500.xml?profiles=euro_dcat_ap,sweden_dcat_ap`
+* `http://demo.ckan.org/dataset/newcastle-city-council-payments-over-500.jsonld?profiles=schemaorg`
 
 *Note*: When using this plugin, the above endpoints will replace the old deprecated ones that were part of CKAN core.
 
@@ -146,7 +135,7 @@ You can specify the profile by using the `profiles=<profile1>,<profile2>` query 
 
 Additionally to the individual dataset representations, the extension also offers a catalog-wide endpoint for retrieving multiple datasets at the same time (the datasets are paginated, see below for details):
 
-    https://{ckan-instance-host}/catalog.{format}?[page={page}]&[modified_since={date}]&[profiles={profile1},{profile2}]&[q={query}]&[fq={filter query}]
+    https://{ckan-instance-host}/catalog.{format}?[page={page}]&[modified_since={date}]&[profiles={profile1},{profile2}]
 
 This endpoint can be customized if necessary using the `ckanext.dcat.catalog_endpoint` configuration option, eg:
 
@@ -194,11 +183,6 @@ http://demo.ckan.org/catalog.xml?modified_since=2015-07-24
 It's possible to specify the profile(s) to use for the serialization using the `profiles` parameter:
 
 http://demo.ckan.org/catalog.xml?profiles=euro_dcat_ap,sweden_dcat_ap
-
-To filter the output, the catalog endpoint supports the `q` and `fq` parameters to specify a [search query](https://lucene.apache.org/solr/guide/6_6/the-dismax-query-parser.html#TheDisMaxQueryParser-TheqParameter) or [filter query](https://lucene.apache.org/solr/guide/6_6/common-query-parameters.html#CommonQueryParameters-Thefq_FilterQuery_Parameter):
-
-http://demo.ckan.org/catalog.xml?q=budget
-http://demo.ckan.org/catalog.xml?fq=tags:economy
 
 
 
@@ -260,12 +244,6 @@ The harvester will look at the `content-type` HTTP header field to determine the
 
 *TODO*: configure profiles.
 
-### Maximum file size
-
-The default max size of the file (for each HTTP response) to harvest is actually 50 MB. The size can be customised by setting the configuration option `ckanext.dcat.max_file_size` to your CKAN configuration file.
-Here‘s an example of setting the max file size to 100 MB:
-
-`ckanext.dcat.max_file_size = 100`
 
 ### Transitive harvesting
 
@@ -294,14 +272,13 @@ the `IDCATRDFHarvester` interface. Right now it provides the following methods:
 * `update_session`: called before making the remote requests to update the `requests` session object, useful to add additional headers or for setting client certificates. Check the [`requests` documentation](http://docs.python-requests.org/en/master/user/advanced/#session-objects) for details.
 * `before_create` / `after_create`: called before and after the `package_create` action has been performed
 * `before_update` / `after_update`: called before and after the `package_update` action has been performed
-* `after_parsing`: Called just after the content from the remote RDF file has been parsed
 
 To know more about these methods, please check the source of [`ckanext-dcat/ckanext/dcat/interfaces.py`](https://github.com/ckan/ckanext-dcat/blob/master/ckanext/dcat/interfaces.py).
 
 ## JSON DCAT harvester
 
 The DCAT JSON harvester supports importing JSON objects that are based on DCAT terms but are not defined as JSON-LD. The exact format for these JSON files
-is the one described in the [spec.dataportals.org](http://spec.dataportals.org/#datasets-serialization-format) site. There are [example files](https://github.com/ckan/ckanext-dcat/blob/master/examples/dataset.json) in the `examples` folder.
+is the one described in the [spec.datacatalogs.org](http://spec.datacatalogs.org/#datasets_serialization_format) site. There are [example files](https://github.com/ckan/ckanext-dcat/blob/master/examples/dataset.json) in the `examples` folder.
 
 To enable the JSON harvester, add the `dcat_json_harvester` plugin to your CKAN configuration file:
 
@@ -317,7 +294,7 @@ the DCAT publisher property with a CKAN dataset author, maintainer or organizati
 and may depend on a particular instance needs. When mapping from CKAN metadata to DCAT though, there are in some cases fallback fields
 that are used if the default field is not present (see [RDF Serializer](#rdf-dcat-serializer) for more details on this.
 
-This mapping is compatible with the [DCAT-AP v1.1](https://joinup.ec.europa.eu/asset/dcat_application_profile/asset_release/dcat-ap-v11) and [DCAT-AP v2.1](https://joinup.ec.europa.eu/collection/semantic-interoperability-community-semic/solution/dcat-application-profile-data-portals-europe/release/210). It depends on the active profile(s) (see [Profiles](#profiles)) which DCAT properties are mapped.
+This mapping is compatible with the [DCAT-AP v1.1](https://joinup.ec.europa.eu/asset/dcat_application_profile/asset_release/dcat-ap-v11).
 
 
 | DCAT class        | DCAT property          | CKAN dataset field                        | CKAN fallback fields           | Stored as |                                                                                                                                                               |
@@ -345,11 +322,8 @@ This mapping is compatible with the [DCAT-AP v1.1](https://joinup.ec.europa.eu/a
 | dcat:Dataset      | dct:isVersionOf        | extra:is_version_of                       |                                | list      | See note about lists. It is assumed that these are one or more URIs referring to another dcat:Dataset                                                         |
 | dcat:Dataset      | dct:source             | extra:source                              |                                | list      | See note about lists. It is assumed that these are one or more URIs referring to another dcat:Dataset                                                         |
 | dcat:Dataset      | adms:sample            | extra:sample                              |                                | list      | See note about lists. It is assumed that these are one or more URIs referring to dcat:Distribution instances                                                  |
-| dcat:Dataset      | dct:spatial            | extra:spatial_uri                         |                                | text      | If the RDF provides them, profiles should store the textual and geometric representation of the location in extra:spatial_text, extra:spatial, extra:spatial_bbox and extra:spatial_centroid respectively |
+| dcat:Dataset      | dct:spatial            | extra:spatial_uri                         |                                | text      | If the RDF provides them, profiles should store the textual and geometric representation of the location in extra:spatial_text and extra:spatial respectively |
 | dcat:Dataset      | dct:temporal           | extra:temporal_start + extra:temporal_end |                                | text      | None, one or both extras can be present                                                                                                                       |
-| dcat:Dataset      | dcat:temporalResolution| extra:temporal_resolution                 |                                | list      |                                                                                                                                                               |
-| dcat:Dataset      | dcat:spatialResolutionInMeters| extra:spatial_resolution_in_meters |                                | list      |                                                                                                                                                               |
-| dcat:Dataset      | dct:isReferencedBy     | extra:is_referenced_by                    |                                | list      |                                                                                                                                                               |
 | dcat:Dataset      | dct:publisher          | extra:publisher_uri                       |                                | text      | See note about URIs                                                                                                                                           |
 | foaf:Agent        | foaf:name              | extra:publisher_name                      |                                | text      |                                                                                                                                                               |
 | foaf:Agent        | foaf:mbox              | extra:publisher_email                     | organization:title             | text      |                                                                                                                                                               |
@@ -361,32 +335,20 @@ This mapping is compatible with the [DCAT-AP v1.1](https://joinup.ec.europa.eu/a
 | dcat:Dataset      | dcat:distribution      | resources                                 |                                | text      |                                                                                                                                                               |
 | dcat:Distribution | -                      | resource:uri                              |                                | text      | See note about URIs                                                                                                                                           |
 | dcat:Distribution | dct:title              | resource:name                             |                                | text      |                                                                                                                                                               |
-| dcat:Distribution | dcat:accessURL         | resource:access_url                       | resource:url                   | text      | If downloadURL is not present, accessURL will be used as resource url                                                                                         |
-| dcat:Distribution | dcat:downloadURL       | resource:download_url                     |                                | text      | If present, downloadURL will be used as resource url                                                                                                          |
+| dcat:Distribution | dcat:accessURL         | resource:url                              |                                | text      | If accessURL is not present, downloadURL will be used as resource url                                                                                         |
+| dcat:Distribution | dcat:downloadURL       | resource:download_url                     |                                | text      |                                                                                                                                                               |
 | dcat:Distribution | dct:description        | resource:description                      |                                | text      |                                                                                                                                                               |
 | dcat:Distribution | dcat:mediaType         | resource:mimetype                         |                                | text      |                                                                                                                                                               |
 | dcat:Distribution | dct:format             | resource:format                           |                                | text      | This is likely to require extra logic to accommodate how CKAN deals with formats (eg ckan/ckanext-dcat#18)                                                    |
 | dcat:Distribution | dct:license            | resource:license                          |                                | text      | See note about dataset license                                                                                                                                |
 | dcat:Distribution | adms:status            | resource:status                           |                                | text      |                                                                                                                                                               |
 | dcat:Distribution | dcat:byteSize          | resource:size                             |                                | number    |                                                                                                                                                               |
-| dcat:Distribution | dct:issued             | resource:issued                           | created                        | text      |                                                                                                                                                               |
-| dcat:Distribution | dct:modified           | resource:modified                         | metadata_modified              | text      |                                                                                                                                                               |
+| dcat:Distribution | dct:issued             | resource:issued                           |                                | text      |                                                                                                                                                               |
+| dcat:Distribution | dct:modified           | resource:modified                         |                                | text      |                                                                                                                                                               |
 | dcat:Distribution | dct:rights             | resource:rights                           |                                | text      |                                                                                                                                                               |
 | dcat:Distribution | foaf:page              | resource:documentation                    |                                | list      | See note about lists                                                                                                                                          |
 | dcat:Distribution | dct:language           | resource:language                         |                                | list      | See note about lists                                                                                                                                          |
 | dcat:Distribution | dct:conformsTo         | resource:conforms_to                      |                                | list      | See note about lists                                                                                                                                          |
-| dcat:Distribution | dcatap:availability    | resource:availability                     |                                | text      |                                                                                                                                                               |
-| dcat:Distribution | dcat:compressFormat    | resource:compress_format                  |                                | text      |                                                                                                                                                               |
-| dcat:Distribution | dcat:packageFormat     | resource:package_format                   |                                | text      |                                                                                                                                                               |
-| dcat:Distribution | dcat:accessService     | resource:access_services                  |                                | text      |                                                                                                                                                               |
-| dcat:DataService  | dct:title              | access_service:title                      |                                | text      |                                                                                                                                                               |
-| dcat:DataService  | dcat:endpointURL       | access_service:endpoint_url               |                                | list      |                                                                                                                                                               |
-| dcat:DataService  | dcat:endpointDescription| access_service:endpoint_description      |                                | text      |                                                                                                                                                               |
-| dcat:DataService  | dcatap:availability    | access_service:availability               |                                | text      |                                                                                                                                                               |
-| dcat:DataService  | dcat:servesDataset     | access_service:serves_dataset             |                                | list      |                                                                                                                                                               |
-| dcat:DataService  | dct:description        | access_service:description                |                                | text      |                                                                                                                                                               |
-| dcat:DataService  | dct:license            | access_service:license                    |                                | text      |                                                                                                                                                               |
-| dcat:DataService  | dct:accessRights       | access_service:access_rights              |                                | text      |                                                                                                                                                               |
 | spdx:Checksum     | spdx:checksumValue     | resource:hash                             |                                | text      |                                                                                                                                                               |
 | spdx:Checksum     | spdx:algorithm         | resource:hash_algorithm                   |                                | text      |                                                                                                                                                               |
 
@@ -663,12 +625,6 @@ the following values will be used for `dct:accrualPeriodicity`:
 Once the dataset graph has been obtained, this is serialized into a text format using [RDFLib](https://rdflib.readthedocs.org/),
 so any format it supports can be obtained (common formats are 'xml', 'turtle' or 'json-ld').
 
-### Inherit license from the dataset as fallback in distributions
-It is possible to inherit the license from the dataset to the distributions, but only if there is no license defined in the resource yet. By default the license is not inherited from the dataset. This can be activated by setting the following parameter in the CKAN config file:
-
-    ckanext.dcat.resource.inherit.license = True
-
-
 ## Profiles
 
 Both the parser and the serializer use profiles to allow customization of how the values defined in the RDF graph are mapped to CKAN and viceversa.
@@ -685,12 +641,7 @@ In most cases the default profile will provide a good mapping that will cover mo
 need custom logic, you can write a custom to profile that extends or replaces the default one.
 
 The default profile is mostly based in the
-[DCAT application profile for data portals in Europe](https://joinup.ec.europa.eu/asset/dcat_application_profile/description). It is actually fully-compatible with [DCAT-AP v1.1](https://joinup.ec.europa.eu/asset/dcat_application_profile/asset_release/dcat-ap-v11), and partially compatible with [DCAT-AP v2.1.0](https://joinup.ec.europa.eu/collection/semantic-interoperability-community-semic/solution/dcat-application-profile-data-portals-europe/release/210). As mentioned before though, it should be generic enough for most DCAT based representations.
-
-Sites that want to support a particular version of the DCAT-AP can enable a specific profile using one of the methods below:
-
-* DCAT-AP v2.1.0 (default): `euro_dcat_ap_2`
-* DCAT-AP v1.1.1: `euro_dcat_ap`
+[DCAT application profile for data portals in Europe](https://joinup.ec.europa.eu/asset/dcat_application_profile/description). It is actually fully-compatible with [DCAT-AP v1.1](https://joinup.ec.europa.eu/asset/dcat_application_profile/asset_release/dcat-ap-v11). As mentioned before though, it should be generic enough for most DCAT based representations.
 
 This plugin also contains a profile to serialize a CKAN dataset to a [schema.org Dataset](http://schema.org/Dataset) called `schemaorg`. This is especially useful to provide [JSON-LD structured data](#structured-data).
 
@@ -724,7 +675,7 @@ used to define publishers or contact points. Check the source code of `ckanex.dc
 
 Profiles can extend other profiles to avoid repeating rules, or can be completely independent.
 
-The following example shows a complete example of a profile built on top of the European DCAT-AP profile (`euro_dcat_ap`):
+The following example shows a complete example of a profile built on top of the default one (`euro_dcat_ap`):
 
 ```python
 
@@ -777,8 +728,6 @@ Extensions define their available profiles using the `ckan.rdf.profiles` in the 
 
     [ckan.rdf.profiles]
     euro_dcat_ap=ckanext.dcat.profiles:EuropeanDCATAPProfile
-    euro_dcat_ap_2=ckanext.dcat.profiles:EuropeanDCATAP2Profile
-    schemaorg=ckanext.dcat.profiles:SchemaOrgProfile
 
 ### Command line interface
 
@@ -818,7 +767,7 @@ To see all available options, run the script with the `-h` argument:
                             xml, n3 ... Defaults to 'xml'.
       -P, --pretty          Make the output more human readable
       -p [PROFILE [PROFILE ...]], --profile [PROFILE [PROFILE ...]]
-                            RDF Profiles to use, defaults to euro_dcat_ap_2
+                            RDF Profiles to use, defaults to euro_dcat_ap
       -m, --compat-mode     Enable compatibility mode
 
 
@@ -855,9 +804,7 @@ To disable this behavior, you can set the following config value in your ini fil
     ckanext.dcat.translate_keys = False
 
 
-## Structured data and Google Dataset Search indexing
-
-There are plugins available to add [structured data](https://developers.google.com/search/docs/guides/intro-structured-data) to dataset pages to provide richer metadata for search engines crawling your site. One of the most well known is [Google Dataset Search](https://toolbox.google.com/datasetsearch). The `structured_data` plugin will add the necessary markup in order to get your datasets indexed by Google Dataset Search. This markup is a JSON-LD snippet that uses the [schema.org](https://schema.org) vocabulary to describe the dataset.
+## Structured data
 
 To add [structured data](https://developers.google.com/search/docs/guides/intro-structured-data) to dataset pages, activate the `structured_data` and `dcat` plugins in your ini file:
 
@@ -951,18 +898,9 @@ Example output of structured data in JSON-LD:
 
 ## Running the Tests
 
-To run the tests do:
+To run the tests, do:
 
-    pytest --ckan-ini=test.ini ckanext/dcat/tests
-    
-## Releases
-
-To create a new release, follow these steps:
-
-* Determine new release number based on the rules of [semantic versioning](http://semver.org)
-* Update the CHANGELOG, especially the link for the "Unreleased" section
-* Update the version number in `setup.py`
-* Create a new release on GitHub and add the CHANGELOG of this release as release notes
+    nosetests --nologcapture --ckan --with-pylons=test.ini ckanext
 
 ## Acknowledgements
 
@@ -974,7 +912,7 @@ Work on ckanext-dcat has been made possible by:
 If you can fund new developments or contribute please get in touch.
 
 
-## Copying and License 
+## Copying and License
 
 This material is copyright (c) Open Knowledge.
 

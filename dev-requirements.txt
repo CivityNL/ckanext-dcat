@@ -1,4 +1,2 @@
-responses==0.20.0
-mock
-pytest-ckan
-pytest-cov
+beautifulsoup4==4.3.2
+httpretty==0.6.2

@@ -1,17 +1,10 @@
-# -*- coding: utf-8 -*-
-
-from builtins import object
-import os
-
-import six
-
-from ckantoolkit import config
+from pylons import config
 
 from ckan import plugins as p
 try:
     from ckan.lib.plugins import DefaultTranslation
 except ImportError:
-    class DefaultTranslation(object):
+    class DefaultTranslation():
         pass
 
 
@@ -23,42 +16,27 @@ from ckanext.dcat.logic import (dcat_dataset_show,
                                 )
 from ckanext.dcat import utils
 
-if p.toolkit.check_ckan_version('2.9'):
-    from ckanext.dcat.plugins.flask_plugin import (
-        MixinDCATPlugin, MixinDCATJSONInterface
-    )
-else:
-    from ckanext.dcat.plugins.pylons_plugin import (
-        MixinDCATPlugin, MixinDCATJSONInterface
-    )
-
-
+DEFAULT_CATALOG_ENDPOINT = '/catalog.{_format}'
 CUSTOM_ENDPOINT_CONFIG = 'ckanext.dcat.catalog_endpoint'
+ENABLE_RDF_ENDPOINTS_CONFIG = 'ckanext.dcat.enable_rdf_endpoints'
+ENABLE_CONTENT_NEGOTIATION_CONFIG = 'ckanext.dcat.enable_content_negotiation'
 TRANSLATE_KEYS_CONFIG = 'ckanext.dcat.translate_keys'
 
-HERE = os.path.abspath(os.path.dirname(__file__))
-I18N_DIR = os.path.join(HERE, u"../i18n")
 
-
-class DCATPlugin(MixinDCATPlugin, p.SingletonPlugin, DefaultTranslation):
+class DCATPlugin(p.SingletonPlugin, DefaultTranslation):
 
     p.implements(p.IConfigurer, inherit=True)
     p.implements(p.ITemplateHelpers, inherit=True)
+    p.implements(p.IRoutes, inherit=True)
     p.implements(p.IActions, inherit=True)
     p.implements(p.IAuthFunctions, inherit=True)
     p.implements(p.IPackageController, inherit=True)
     if p.toolkit.check_ckan_version(min_version='2.5.0'):
         p.implements(p.ITranslation, inherit=True)
 
-    # ITranslation
-
-    def i18n_directory(self):
-        return I18N_DIR
-
     # IConfigurer
-
     def update_config(self, config):
-        p.toolkit.add_template_directory(config, '../templates')
+        p.toolkit.add_template_directory(config, 'templates')
 
         # Check catalog URI on startup to emit a warning if necessary
         utils.catalog_uri()
@@ -76,15 +54,41 @@ class DCATPlugin(MixinDCATPlugin, p.SingletonPlugin, DefaultTranslation):
                         CUSTOM_ENDPOINT_CONFIG))
 
     # ITemplateHelpers
-
     def get_helpers(self):
         return {
             'helper_available': utils.helper_available,
-            'dcat_get_endpoint': utils.get_endpoint,
         }
 
-    # IActions
+    # IRoutes
+    def before_map(self, _map):
 
+        controller = 'ckanext.dcat.controllers:DCATController'
+
+        if p.toolkit.asbool(config.get(ENABLE_RDF_ENDPOINTS_CONFIG, True)):
+
+            _map.connect('dcat_catalog',
+                         config.get('ckanext.dcat.catalog_endpoint',
+                                    DEFAULT_CATALOG_ENDPOINT),
+                         controller=controller, action='read_catalog',
+                         requirements={'_format': 'xml|rdf|n3|ttl|jsonld'})
+
+            _map.connect('dcat_dataset', '/dataset/{_id}.{_format}',
+                         controller=controller, action='read_dataset',
+                         requirements={'_format': 'xml|rdf|n3|ttl|jsonld'})
+
+        if p.toolkit.asbool(config.get(ENABLE_CONTENT_NEGOTIATION_CONFIG)):
+
+            _map.connect('home', '/', controller=controller,
+                         action='read_catalog')
+
+            _map.connect('add dataset', '/dataset/new', controller='package', action='new')
+            _map.connect('dataset_read', '/dataset/{_id}',
+                         controller=controller, action='read_dataset',
+                         ckan_icon='sitemap')
+
+        return _map
+
+    # IActions
     def get_actions(self):
         return {
             'dcat_dataset_show': dcat_dataset_show,
@@ -93,7 +97,6 @@ class DCATPlugin(MixinDCATPlugin, p.SingletonPlugin, DefaultTranslation):
         }
 
     # IAuthFunctions
-
     def get_auth_functions(self):
         return {
             'dcat_dataset_show': dcat_auth,
@@ -102,13 +105,7 @@ class DCATPlugin(MixinDCATPlugin, p.SingletonPlugin, DefaultTranslation):
         }
 
     # IPackageController
-
-    # CKAN < 2.10 hooks
     def after_show(self, context, data_dict):
-        return self.after_dataset_show(context, data_dict)
-
-    # CKAN >= 2.10 hooks
-    def after_dataset_show(self, context, data_dict):
 
         # check if config is enabled to translate keys (default: True)
         if not p.toolkit.asbool(config.get(TRANSLATE_KEYS_CONFIG, True)):
@@ -118,7 +115,7 @@ class DCATPlugin(MixinDCATPlugin, p.SingletonPlugin, DefaultTranslation):
             field_labels = utils.field_labels()
 
             def set_titles(object_dict):
-                for key, value in six.iteritems(object_dict.copy()):
+                for key, value in object_dict.iteritems():
                     if key in field_labels:
                         object_dict[field_labels[key]] = object_dict[key]
                         del object_dict[key]
@@ -133,19 +130,28 @@ class DCATPlugin(MixinDCATPlugin, p.SingletonPlugin, DefaultTranslation):
         return data_dict
 
 
-class DCATJSONInterface(MixinDCATJSONInterface, p.SingletonPlugin):
+class DCATJSONInterface(p.SingletonPlugin):
+
+    p.implements(p.IRoutes, inherit=True)
     p.implements(p.IActions)
     p.implements(p.IAuthFunctions, inherit=True)
 
-    # IActions
+    # IRoutes
+    def after_map(self, map):
 
+        controller = 'ckanext.dcat.controllers:DCATController'
+        route = config.get('ckanext.dcat.json_endpoint', '/dcat.json')
+        map.connect(route, controller=controller, action='dcat_json')
+
+        return map
+
+    # IActions
     def get_actions(self):
         return {
             'dcat_datasets_list': dcat_datasets_list,
         }
 
     # IAuthFunctions
-
     def get_auth_functions(self):
         return {
             'dcat_datasets_list': dcat_auth,
@@ -156,8 +162,8 @@ class StructuredDataPlugin(p.SingletonPlugin):
     p.implements(p.ITemplateHelpers, inherit=True)
 
     # ITemplateHelpers
-
     def get_helpers(self):
         return {
             'structured_data': utils.structured_data,
         }
+

@@ -1,14 +1,10 @@
-from __future__ import print_function
-
-from builtins import str
-from builtins import object
 import sys
 import argparse
 import xml
 import json
 from pkg_resources import iter_entry_points
 
-from ckantoolkit import config
+from pylons import config
 
 import rdflib
 import rdflib.parser
@@ -19,7 +15,8 @@ import ckan.plugins as p
 
 from ckanext.dcat.utils import catalog_uri, dataset_uri, url_to_rdflib_format, DCAT_EXPOSE_SUBCATALOGS
 from ckanext.dcat.profiles import DCAT, DCT, FOAF
-from ckanext.dcat.exceptions import RDFProfileException, RDFParserException
+import logging
+log = logging.getLogger(__name__)
 
 HYDRA = Namespace('http://www.w3.org/ns/hydra/core#')
 DCAT = Namespace("http://www.w3.org/ns/dcat#")
@@ -28,7 +25,15 @@ RDF_PROFILES_ENTRY_POINT_GROUP = 'ckan.rdf.profiles'
 RDF_PROFILES_CONFIG_OPTION = 'ckanext.dcat.rdf.profiles'
 COMPAT_MODE_CONFIG_OPTION = 'ckanext.dcat.compatibility_mode'
 
-DEFAULT_RDF_PROFILES = ['euro_dcat_ap_2']
+DEFAULT_RDF_PROFILES = ['euro_dcat_ap']
+
+
+class RDFParserException(Exception):
+    pass
+
+
+class RDFProfileException(Exception):
+    pass
 
 
 class RDFProcessor(object):
@@ -61,7 +66,7 @@ class RDFProcessor(object):
                 config.get(COMPAT_MODE_CONFIG_OPTION, False))
         self.compatibility_mode = compatibility_mode
 
-        self.g = rdflib.ConjunctiveGraph()
+        self.g = rdflib.Graph()
 
     def _load_profiles(self, profile_names):
         '''
@@ -117,7 +122,7 @@ class RDFParser(RDFProcessor):
         '''
         for pagination_node in self.g.subjects(RDF.type, HYDRA.PagedCollection):
             for o in self.g.objects(pagination_node, HYDRA.nextPage):
-                return str(o)
+                return unicode(o)
         return None
 
 
@@ -148,7 +153,7 @@ class RDFParser(RDFProcessor):
         # exceptions are not cached, add them here.
         # PluginException indicates that an unknown format was passed.
         except (SyntaxError, xml.sax.SAXParseException,
-                rdflib.plugin.PluginException, TypeError) as e:
+                rdflib.plugin.PluginException, TypeError), e:
 
             raise RDFParserException(e)
 
@@ -235,12 +240,18 @@ class RDFSerializer(RDFProcessor):
         Returns the reference to the dataset, which will be an rdflib URIRef.
         '''
 
+        uri_value = dataset_dict.get('uri')
+        if not uri_value:
+            for extra in dataset_dict.get('extras', []):
+                if extra['key'] == 'uri':
+                    uri_value = extra['value']
+                    break
+
         dataset_ref = URIRef(dataset_uri(dataset_dict))
 
         for profile_class in self._profiles:
             profile = profile_class(self.g, self.compatibility_mode)
             profile.graph_from_dataset(dataset_dict, dataset_ref)
-
         return dataset_ref
 
     def graph_from_catalog(self, catalog_dict=None):
@@ -369,6 +380,7 @@ class RDFSerializer(RDFProcessor):
                                  ('type', Literal, DCT.type, False,))
 
             _pub = _get_from_extra('source_catalog_publisher')
+            log.info('val : {}'.format(publisher_sources))
             if _pub:
                 pub = json.loads(_pub)
 
@@ -380,6 +392,7 @@ class RDFSerializer(RDFProcessor):
 
                 for src_key, _type, predicate, required in publisher_sources:
                     val = pub.get(src_key)
+
                     if val is None and required:
                         raise ValueError("Value for %s (%s) is required" % (src_key, predicate))
                     elif val is None:
@@ -412,7 +425,7 @@ Operation mode.
                         help='Make the output more human readable')
     parser.add_argument('-p', '--profile', nargs='*',
                         action='store',
-                        help='RDF Profiles to use, defaults to euro_dcat_ap_2')
+                        help='RDF Profiles to use, defaults to euro_dcat_ap')
     parser.add_argument('-m', '--compat-mode',
                         action='store_true',
                         help='Enable compatibility mode')
@@ -426,21 +439,13 @@ Operation mode.
 
     config.update({DCAT_EXPOSE_SUBCATALOGS: args.subcatalogs})
 
-    # Workaround until the core translation function defaults to the Flask one
-    from paste.registry import Registry
-    from ckan.lib.cli import MockTranslator
-    registry = Registry()
-    registry.prepare()
-    from pylons import translator
-    registry.register(translator, MockTranslator())
-
     if args.mode == 'produce':
         serializer = RDFSerializer(profiles=args.profile,
                                    compatibility_mode=args.compat_mode)
 
         dataset = json.loads(contents)
         out = serializer.serialize_dataset(dataset, _format=args.format)
-        print(out)
+        print out
     else:
         parser = RDFParser(profiles=args.profile,
                            compatibility_mode=args.compat_mode)
@@ -450,4 +455,4 @@ Operation mode.
         ckan_datasets = [d for d in parser.datasets()]
 
         indent = 4 if args.pretty else None
-        print(json.dumps(ckan_datasets, indent=indent))
+        print json.dumps(ckan_datasets, indent=indent)

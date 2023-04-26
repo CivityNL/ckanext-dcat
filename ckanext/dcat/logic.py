@@ -1,8 +1,7 @@
 from __future__ import division
 import math
 
-import six
-from ckantoolkit import config
+from pylons import config
 from dateutil.parser import parse as dateutil_parse
 
 from ckan.plugins import toolkit
@@ -10,7 +9,7 @@ from ckan.plugins import toolkit
 import ckanext.dcat.converters as converters
 
 from ckanext.dcat.processors import RDFSerializer
-from ckanext.dcat.utils import catalog_uri
+
 
 DATASETS_PER_PAGE = 100
 
@@ -93,6 +92,7 @@ def _search_ckan_datasets(context, data_dict):
         raise wrong_page_exception
 
     modified_since = data_dict.get('modified_since')
+    organization = data_dict.get('organization')
     if modified_since:
         try:
             modified_since = dateutil_parse(modified_since).isoformat() + 'Z'
@@ -107,7 +107,8 @@ def _search_ckan_datasets(context, data_dict):
     }
 
     search_data_dict['q'] = data_dict.get('q', '*:*')
-    search_data_dict['fq'] = data_dict.get('fq')
+    # solr CommonQueryParameters https://wiki.apache.org/solr/CommonQueryParameters#fq
+    search_data_dict['fq'] = 'organization: {}'.format(organization)
     search_data_dict['fq_list'] = []
 
     # Exclude certain dataset types
@@ -145,20 +146,16 @@ def _pagination_info(query, data_dict):
 
     def _page_url(page):
 
-        base_url = catalog_uri()
+        base_url = config.get('ckan.site_url', '').strip('/')
+        if not base_url:
+            base_url = toolkit.request.host_url
         base_url = '%s%s' % (
             base_url, toolkit.request.path)
 
-        params = [p for p in toolkit.request.params.items()
-                  if p[0] != 'page' and p[0] in ('modified_since', 'profiles', 'q', 'fq')]
+        params = [p for p in toolkit.request.params.iteritems()
+                  if p[0] != 'page']
         if params:
-            qs = '&'.join(
-                ['{0}={1}'.format(
-                    p[0],
-                    p[1].encode('utf8') if six.PY2 else p[1]
-                    ) for p in params
-                ]
-            )
+            qs = '&'.join(['{0}={1}'.format(p[0], p[1]) for p in params])
             return '{0}?{1}&page={2}'.format(
                 base_url,
                 qs,
