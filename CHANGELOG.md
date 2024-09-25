@@ -1,6 +1,7 @@
 # Changelog
 
 ## [v1.5.1+civity.1](https://github.com/ckan/ckanext-dcat/compare/v1.5.1+civity.1...v1.5.1+civity.0) - TBD
+
 * Fixed import related to issues with 'overwrite_values'. (CIVDEV-998)
 
 ## [v1.5.1+civity.0](https://github.com/ckan/ckanext-dcat/compare/v1.5.1...v1.5.1+civity.0) - 2024-06-20
