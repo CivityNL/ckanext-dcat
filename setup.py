@@ -1,6 +1,6 @@
 from setuptools import setup, find_packages
 
-version = '1.5.1'
+version = '1.5.1+civity.1'
 
 setup(
     name='ckanext-dcat',
@@ -10,9 +10,9 @@ setup(
     ''',
     classifiers=[],
     keywords='',
-    author='Open Knowledge Foundation',
-    author_email='info@ckan.org',
-    url='https://github.com/okfn/ckanext-dcat',
+    author='Civity',
+    author_email='help@civity.nl',
+    url='https://github.com/CivityNL/ckanext-dcat',
     license='AGPL',
     packages=find_packages(exclude=['ez_setup', 'examples', 'tests']),
     namespace_packages=['ckanext'],
