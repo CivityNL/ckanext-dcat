@@ -20,7 +20,7 @@ import ckan.plugins as p
 from ckanext.dcat.utils import catalog_uri, dataset_uri, url_to_rdflib_format, DCAT_EXPOSE_SUBCATALOGS
 from ckanext.dcat.profiles import DCAT, DCT, FOAF
 from ckanext.dcat.exceptions import RDFProfileException, RDFParserException
-import helpers as h
+import ckanext.dcat.helpers as h
 
 HYDRA = Namespace('http://www.w3.org/ns/hydra/core#')
 DCAT = Namespace("http://www.w3.org/ns/dcat#")
