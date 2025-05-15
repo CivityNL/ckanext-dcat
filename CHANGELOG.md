@@ -1,5 +1,9 @@
 # Changelog
 
+## [v1.6.1]
+
+* update processor to push overwrite args into catalog_dict -- ([CIVDEV-1356](https://civity.atlassian.net/browse/CIVDEV-1356)) 
+
 ## [v1.5.1+civity.1](https://github.com/ckan/ckanext-dcat/compare/v1.5.1+civity.1...v1.5.1+civity.0) - TBD
 
 * Fixed import related to issues with 'overwrite_values'. (CIVDEV-998)
