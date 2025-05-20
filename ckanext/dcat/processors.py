@@ -312,10 +312,11 @@ class RDFSerializer(RDFProcessor):
 
         # Validate overwrite param, if exists
         overwrite_dict = h.validate_overwrite_param(overwrite_values) if overwrite_values else None
-        
-		# push overwrite_dict to catalog_dict to be consumed by catalog serializer
-		if overwrite_dict:
+
+        # push overwrite_dict to catalog_dict to be consumed by catalog serializer
+        if overwrite_dict:
             catalog_dict['overwrite_dict'] = overwrite_dict
+            
         catalog_ref = self.graph_from_catalog(catalog_dict)
         if dataset_dicts:
             for dataset_dict in dataset_dicts:
