@@ -1,8 +1,8 @@
 # Changelog
 
-## [v1.6.1]
+## [v1.5.1+civity.2](https://github.com/ckan/ckanext-dcat/compare/v1.5.1+civity.2...v1.5.1+civity.1) - TBD
 
-* update processor to push overwrite args into catalog_dict -- ([CIVDEV-1356](https://civity.atlassian.net/browse/CIVDEV-1356)) 
+* Update `serialize_catalog` to push overwrite args into catalog_dict -- ([CIVDEV-1356](https://civity.atlassian.net/browse/CIVDEV-1356)) 
 
 ## [v1.5.1+civity.1](https://github.com/ckan/ckanext-dcat/compare/v1.5.1+civity.1...v1.5.1+civity.0) - TBD
 
