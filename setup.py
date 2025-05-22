@@ -1,6 +1,6 @@
 from setuptools import setup, find_packages
 
-version = '1.5.1+civity.1'
+version = '1.5.1+civity.2'
 
 setup(
     name='ckanext-dcat',
