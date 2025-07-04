@@ -1,14 +1,14 @@
 # Changelog
 
-## [v1.5.1+civity.2.0](https://github.com/ckan/ckanext-dcat/compare/v1.5.1+civity.1...v1.5.1+civity.2.0) - 2025-06-30
+## [v1.5.1+civity.2.0](https://github.com/CivityNL/ckanext-dcat/compare/v1.5.1+civity.1...v1.5.1+civity.2.0) - 2025-06-30
 
 * Update `serialize_catalog` to push overwrite args into catalog_dict -- ([CIVDEV-1356](https://civity.atlassian.net/browse/CIVDEV-1356)) 
 
-## [v1.5.1+civity.1](https://github.com/ckan/ckanext-dcat/compare/v1.5.1+civity.0...v1.5.1+civity.1) - 2024-09-30
+## [v1.5.1+civity.1](https://github.com/CivityNL/ckanext-dcat/compare/v1.5.1+civity.0...v1.5.1+civity.1) - 2024-09-30
 
 * Fixed import related to issues with 'overwrite_values'. (CIVDEV-998)
 
-## [v1.5.1+civity.0](https://github.com/ckan/ckanext-dcat/compare/v1.5.1...v1.5.1+civity.0) - 2024-06-20
+## [v1.5.1+civity.0](https://github.com/CivityNL/ckanext-dcat/compare/v1.5.1...v1.5.1+civity.0) - 2024-06-20
 
 * Fix tests to work with `ckanext-harvest >= 1.5.4`. 
 * Implement 'overwrite_values' that currently supports: (CIVDEV-193) 
